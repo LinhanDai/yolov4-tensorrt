@@ -61,9 +61,101 @@ void YoloV4::doInference(nvinfer1::IExecutionContext& context, float* boxesProb,
     cudaStreamSynchronize(mStream);
 }
 
-std::vector<detectResult> YoloV4::postProcessing(float *boxesProb, float *confProb)
+void YoloV4::getMaxConfsData(const float *confProb, int batch,
+                             std::vector<std::vector<float>> &maxConfVec,  std::vector<std::vector<int>> &maxConfIndexVec) const
 {
+    for (int i = 0; i < batch; i ++)
+    {
+        std::vector<float> confVec;
+        std::vector<int> indexVec;
+        for (int j = 0; j < mOutputConfsN; j++)
+        {
+            float maxConf = 0;
+            int maxConfIndex = 0;
+            for (int k = 0; k < mOutputConfsDim; k++)
+            {
+                if (confProb[i * mOutputConfsSize + j * mOutputConfsDim + k] > maxConf)
+                {
+                    maxConf = confProb[i * mOutputConfsSize + j * mOutputConfsDim + k];
+                    maxConfIndex = k;
+                }
+            }
+            confVec.push_back(maxConf);
+            indexVec.push_back(maxConfIndex);
+        }
+        maxConfVec.push_back(confVec);
+        maxConfIndexVec.push_back(indexVec);
+    }
+}
 
+void YoloV4::thresholdFilter(const float *boxesProb, std::vector<std::vector<float>> &maxConfVec, std::vector<std::vector<int>> &maxConfIndexVec,
+                             std::vector<std::vector<float>> &confFilterVec, std::vector<std::vector<int>> &confIdFilterVec,
+                             std::vector<std::vector<ObjPos>> &boxFilterVec,float confThreshold) const
+{
+    int batch = maxConfVec.size();
+    for (int i = 0; i < batch; i++)
+    {
+        std::vector<ObjPos> pos;
+        std::vector<float> conf;
+        std::vector<int> id;
+        std::vector<float> confVec = maxConfVec[i];
+        std::vector<int> confIndexVec = maxConfIndexVec[i];
+        for (int j= 0; j < confVec.size(); ++j)
+        {
+            if (confVec[j] > confThreshold)
+            {
+                ObjPos boxPos{};
+                conf.push_back(confVec[j]);
+                id.push_back(confIndexVec[j]);
+                boxPos.x1 = boxesProb[i * mOutputBoxesSize + j * mOutputBoxesDim];
+                boxPos.y1 = boxesProb[i * mOutputBoxesSize + j * mOutputBoxesDim + 1];
+                boxPos.x2 = boxesProb[i * mOutputBoxesSize + j * mOutputBoxesDim + 2];
+                boxPos.y2 = boxesProb[i * mOutputBoxesSize + j * mOutputBoxesDim + 3];
+                pos.push_back(boxPos);
+            }
+        }
+        confFilterVec.push_back(conf);
+        confIdFilterVec.push_back(id);
+        boxFilterVec.push_back(pos);
+    }
+}
+
+std::vector<detectResult> YoloV4::getDetResult(std::vector<std::vector<float>> &confFilterVec,
+                                       std::vector<std::vector<int>> &confIdFilterVec,
+                                       std::vector<std::vector<ObjPos>> &boxFilterVec)
+{
+    std::vector<detectResult> result;
+    int batch = boxFilterVec.size();
+    for (int i = 0; i < batch; i++)
+    {
+        detectResult det;
+        for (int j = 0; j < boxFilterVec[i].size(); ++j)
+        {
+            ObjStu obj{};
+            obj.rect.x = boxFilterVec[i][j].x1 * 1920;
+            obj.rect.y = boxFilterVec[i][j].y1 * 1080;
+            obj.rect.width = (boxFilterVec[i][j].x2 - boxFilterVec[i][j].x1) * 1920;
+            obj.rect.height = (boxFilterVec[i][j].y2 - boxFilterVec[i][j].y1) * 1080;
+            obj.prob = confFilterVec[i][j];
+            obj.id = confIdFilterVec[i][j];
+            det.push_back(obj);
+        }
+        result.push_back(det);
+    }
+    return result;
+}
+
+std::vector<detectResult> YoloV4::postProcessing(float *boxesProb, float *confProb, int batch)
+{
+    std::vector<std::vector<float>> maxConfVec;
+    std::vector<std::vector<int>> maxConfIndexVec;
+    std::vector<std::vector<float>> confFilterVec;
+    std::vector<std::vector<int>> confIdFilterVec;
+    std::vector<std::vector<ObjPos>> boxFilterVec;
+    getMaxConfsData(confProb, batch, maxConfVec, maxConfIndexVec);
+    thresholdFilter(boxesProb, maxConfVec, maxConfIndexVec, confFilterVec, confIdFilterVec, boxFilterVec, 0.4);
+    std::vector<detectResult> result = getDetResult(confFilterVec, confIdFilterVec, boxFilterVec);
+    return result;
 }
 
 std::vector<detectResult> YoloV4::detect(std::vector<cv::Mat> &batchImg)
@@ -71,6 +163,7 @@ std::vector<detectResult> YoloV4::detect(std::vector<cv::Mat> &batchImg)
     int batch = batchImg.size();
     imgPreProcess(batchImg);
     int inputSingleByteNum = mInputH * mInputW * mInputC;
+    std::cout <<  inputSingleByteNum << std::endl;
     for (size_t i = 0; i < batch; i++)
     {
         cudaMemcpyAsync(mInputData + i * inputSingleByteNum, batchImg[i].data, inputSingleByteNum,
@@ -80,15 +173,10 @@ std::vector<detectResult> YoloV4::detect(std::vector<cv::Mat> &batchImg)
     cudaPreProcess(mBuff[0], mInputData, mInputW, mInputH, mInputC, batch, mStream);
     float *boxesProb = (float *) malloc(batch * mOutputBoxesSize * sizeof(float));
     float *confProb = (float *) malloc(batch * mOutputConfsSize * sizeof(float));
+    memset(boxesProb, 0, batch * mOutputBoxesSize * sizeof(float));
+    memset(confProb, 0, batch * mOutputConfsSize * sizeof(float));
     doInference(*mContext, boxesProb, confProb, batch);
-    for (int i = 0; i < mOutputConfsSize; i++)
-    {
-        if (confProb[i] > 0.004)
-        {
-            std::cout << confProb[i] << " ";
-        }
-    }
-    std::vector<detectResult> detectResult = postProcessing(boxesProb, confProb);
+    std::vector<detectResult> detectResult = postProcessing(boxesProb, confProb, batch);
     free(boxesProb);
     free(confProb);
     return detectResult;

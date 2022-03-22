@@ -25,17 +25,17 @@ __global__ void cudaPreProcessKenerl(float* img_dst, unsigned char* img_source, 
         if (c == 0)
         {
             int source = i * width * height * channel + (y * width + x) * channel + 2;
-            img_dst[dst] = img_source[source] / 255;
+            img_dst[dst] = img_source[source] / 255.0;
         }
         else if (c == 1)
         {
             int source = i * width * height * channel + (y * width + x) * channel + 1;
-            img_dst[dst] = img_source[source] / 255;
+            img_dst[dst] = img_source[source] / 255.0;
         }
         else if (c == 2)
         {
             int source = i * width * height * channel + (y * width + x) * channel + 0;
-            img_dst[dst] = img_source[source] / 255;
+            img_dst[dst] = img_source[source] / 255.0;
         }
     }
 }
