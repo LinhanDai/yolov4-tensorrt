@@ -1,0 +1,6 @@
+%YAML:1.0
+---
+maxSupportBatchSize: 64
+quantizationInfer: "FP16"       #FP32 or FP16 quantization
+onnxFile: "yolov4_-1_3_832_832_dynamic.onnx"
+engineFile: "yolov4_-1_3_832_832_dynamic.engine"
