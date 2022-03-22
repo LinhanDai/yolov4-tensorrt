@@ -33,7 +33,7 @@ YoloV4::~YoloV4()
     }
 }
 
-void YoloV4::imgPreProcess(std::vector<cv::Mat> &batchImg)
+void YoloV4::imgPreProcess(std::vector<cv::Mat> &batchImg) const
 {
     for (int i = 0; i < batchImg.size(); i++)
     {
@@ -132,10 +132,10 @@ std::vector<detectResult> YoloV4::getDetResult(std::vector<std::vector<float>> &
         for (int j = 0; j < boxFilterVec[i].size(); ++j)
         {
             ObjStu obj{};
-            obj.rect.x = boxFilterVec[i][j].x1 * 1920;
-            obj.rect.y = boxFilterVec[i][j].y1 * 1080;
-            obj.rect.width = (boxFilterVec[i][j].x2 - boxFilterVec[i][j].x1) * 1920;
-            obj.rect.height = (boxFilterVec[i][j].y2 - boxFilterVec[i][j].y1) * 1080;
+            obj.rect.x = boxFilterVec[i][j].x1 * mImageSizeBatch[i].width;
+            obj.rect.y = boxFilterVec[i][j].y1 * mImageSizeBatch[i].height;
+            obj.rect.width = (boxFilterVec[i][j].x2 - boxFilterVec[i][j].x1) * mImageSizeBatch[i].width;
+            obj.rect.height = (boxFilterVec[i][j].y2 - boxFilterVec[i][j].y1) * mImageSizeBatch[i].height;
             obj.prob = confFilterVec[i][j];
             obj.id = confIdFilterVec[i][j];
             det.push_back(obj);
@@ -158,12 +158,24 @@ std::vector<detectResult> YoloV4::postProcessing(float *boxesProb, float *confPr
     return result;
 }
 
+void YoloV4::initInputImageSize(std::vector<cv::Mat> &batchImg)
+{
+    int batch = batchImg.size();
+    for (int i = 0; i < batch; i++)
+    {
+        ImgInfo info{};
+        info.width = batchImg[i].cols;
+        info.height = batchImg[i].rows;
+        mImageSizeBatch.push_back(info);
+    }
+}
+
 std::vector<detectResult> YoloV4::detect(std::vector<cv::Mat> &batchImg)
 {
     int batch = batchImg.size();
+    initInputImageSize(batchImg);
     imgPreProcess(batchImg);
     int inputSingleByteNum = mInputH * mInputW * mInputC;
-    std::cout <<  inputSingleByteNum << std::endl;
     for (size_t i = 0; i < batch; i++)
     {
         cudaMemcpyAsync(mInputData + i * inputSingleByteNum, batchImg[i].data, inputSingleByteNum,

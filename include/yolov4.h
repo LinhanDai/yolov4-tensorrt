@@ -54,6 +54,12 @@ struct ObjPos
     float y2;
 };
 
+struct ImgInfo
+{
+    float width;
+    float height;
+};
+
 typedef std::vector<ObjStu> detectResult;
 
 class YoloV4
@@ -64,7 +70,8 @@ public:
     std::vector<detectResult> detect(std::vector<cv::Mat> &batchImg);
 
 private:
-    void imgPreProcess(std::vector<cv::Mat> &batchImg);
+    void initInputImageSize(std::vector<cv::Mat> &batchImg);
+    void imgPreProcess(std::vector<cv::Mat> &batchImg) const;
     void getTrtmodelStream();
     void readParameters(const std::string& configPath);
     nvinfer1::ICudaEngine* createEngine(nvinfer1::IBuilder *builder, nvinfer1::IBuilderConfig *config);
@@ -83,6 +90,7 @@ private:
                                            std::vector<std::vector<ObjPos>> &boxFilterVec);
 
 private:
+    std::vector<ImgInfo> mImageSizeBatch;
     int mMaxSupportBatchSize;
     size_t mEngineFileSize;
     std::string mQuantizationInfer;

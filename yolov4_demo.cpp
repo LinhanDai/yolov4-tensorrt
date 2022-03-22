@@ -23,7 +23,9 @@ void showResult(const std::vector<detectResult>& result, cv::Mat img)
             cv::putText(img, stream.str(), cv::Point(r.rect.x, r.rect.y - 5), 0, 0.5, cv::Scalar(0, 0, 255), 2);
         }
     }
-    cv::imshow("imag", img);
+    cv::namedWindow("Windows", cv::WINDOW_NORMAL);
+    cv::resizeWindow("Windows", img.cols / 2, img.rows / 2);
+    cv::imshow("Windows", img);
     cv::waitKey(0);
 }
 
@@ -36,7 +38,11 @@ int main()
     imgClone = img.clone();
     imgBatch.push_back(img);
     std::shared_ptr<YoloV4> yoloObj = std::make_shared<YoloV4>(configPath);
+//        double start = cv::getTickCount();
     std::vector<detectResult> result = yoloObj->detect(imgBatch);
+//        double end = cv::getTickCount();
+//        std::cout << "fps:" << 1 / ((end - start) / cv::getTickFrequency()) << std::endl;
+
     showResult(result, imgClone);
     return 0;
 }
