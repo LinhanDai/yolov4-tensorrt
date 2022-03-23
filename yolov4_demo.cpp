@@ -19,7 +19,7 @@ void showResult(const std::vector<detectResult>& result, cv::Mat img)
         {
             std::stringstream stream;
             stream << std::fixed << std::setprecision(2) << "id:" << r.id << "  score:" << r.prob;
-            cv::rectangle(img, r.rect, colors[r.id], 1);
+            cv::rectangle(img, r.rect, colors[r.id], 2);
             cv::putText(img, stream.str(), cv::Point(r.rect.x, r.rect.y - 5), 0, 0.5, cv::Scalar(0, 0, 255), 2);
         }
     }
@@ -38,10 +38,10 @@ int main()
     imgClone = img.clone();
     imgBatch.push_back(img);
     std::shared_ptr<YoloV4> yoloObj = std::make_shared<YoloV4>(configPath);
-//        double start = cv::getTickCount();
+//    double start = cv::getTickCount();
     std::vector<detectResult> result = yoloObj->detect(imgBatch);
-//        double end = cv::getTickCount();
-//        std::cout << "fps:" << 1 / ((end - start) / cv::getTickFrequency()) << std::endl;
+//    double end = cv::getTickCount();
+//    std::cout << "fps:" << 1 / ((end - start) / cv::getTickFrequency()) << std::endl;
 
     showResult(result, imgClone);
     return 0;

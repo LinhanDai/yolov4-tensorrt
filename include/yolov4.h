@@ -70,6 +70,8 @@ public:
     std::vector<detectResult> detect(std::vector<cv::Mat> &batchImg);
 
 private:
+    void bubbleSort(std::vector<float> confs, int length, std::vector<int> &indDiff);
+    float getIOU(cv::Rect_<float> bb_test, cv::Rect_<float> bb_gt);
     void initInputImageSize(std::vector<cv::Mat> &batchImg);
     void imgPreProcess(std::vector<cv::Mat> &batchImg) const;
     void getTrtmodelStream();
@@ -87,9 +89,14 @@ private:
                          std::vector<std::vector<ObjPos>> &boxFilterVec,float confThreshold) const;
     std::vector<detectResult> getDetResult(std::vector<std::vector<float>> &confFilterVec,
                                            std::vector<std::vector<int>> &confIdFilterVec,
-                                           std::vector<std::vector<ObjPos>> &boxFilterVec);
+                                           std::vector<std::vector<ObjPos>> &boxFilterVec,
+                                           std::vector<std::vector<int>> keepVec);
+    std::vector<std::vector<int>> allClassNMS(std::vector<std::vector<float>> &confFilterVec,
+                                                      std::vector<std::vector<int>> &confIdFilterVec,
+                                                      std::vector<std::vector<ObjPos>> &boxFilterVec, float nmsThreshold);
 
 private:
+    bool mAllClasssNMS;
     std::vector<ImgInfo> mImageSizeBatch;
     int mMaxSupportBatchSize;
     size_t mEngineFileSize;

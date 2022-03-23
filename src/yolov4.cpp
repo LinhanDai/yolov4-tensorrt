@@ -122,22 +122,23 @@ void YoloV4::thresholdFilter(const float *boxesProb, std::vector<std::vector<flo
 
 std::vector<detectResult> YoloV4::getDetResult(std::vector<std::vector<float>> &confFilterVec,
                                        std::vector<std::vector<int>> &confIdFilterVec,
-                                       std::vector<std::vector<ObjPos>> &boxFilterVec)
+                                       std::vector<std::vector<ObjPos>> &boxFilterVec,
+                                       std::vector<std::vector<int>> keepVec)
 {
     std::vector<detectResult> result;
     int batch = boxFilterVec.size();
     for (int i = 0; i < batch; i++)
     {
         detectResult det;
-        for (int j = 0; j < boxFilterVec[i].size(); ++j)
+        for (int j = 0; j < keepVec[i].size(); ++j)
         {
             ObjStu obj{};
-            obj.rect.x = boxFilterVec[i][j].x1 * mImageSizeBatch[i].width;
-            obj.rect.y = boxFilterVec[i][j].y1 * mImageSizeBatch[i].height;
-            obj.rect.width = (boxFilterVec[i][j].x2 - boxFilterVec[i][j].x1) * mImageSizeBatch[i].width;
-            obj.rect.height = (boxFilterVec[i][j].y2 - boxFilterVec[i][j].y1) * mImageSizeBatch[i].height;
-            obj.prob = confFilterVec[i][j];
-            obj.id = confIdFilterVec[i][j];
+            obj.rect.x = boxFilterVec[i][keepVec[i][j]].x1 * mImageSizeBatch[i].width;
+            obj.rect.y = boxFilterVec[i][keepVec[i][j]].y1 * mImageSizeBatch[i].height;
+            obj.rect.width = (boxFilterVec[i][keepVec[i][j]].x2 - boxFilterVec[i][keepVec[i][j]].x1) * mImageSizeBatch[i].width;
+            obj.rect.height = (boxFilterVec[i][keepVec[i][j]].y2 - boxFilterVec[i][keepVec[i][j]].y1) * mImageSizeBatch[i].height;
+            obj.prob = confFilterVec[i][keepVec[i][j]];
+            obj.id = confIdFilterVec[i][keepVec[i][j]];
             det.push_back(obj);
         }
         result.push_back(det);
@@ -145,8 +146,90 @@ std::vector<detectResult> YoloV4::getDetResult(std::vector<std::vector<float>> &
     return result;
 }
 
+// Computes IOU between two bounding boxes
+float YoloV4::getIOU(cv::Rect_<float> bb_test, cv::Rect_<float> bb_gt)
+{
+    float in = (bb_test & bb_gt).area();
+    float un = bb_test.area() + bb_gt.area() - in;
+    if (un < DBL_EPSILON)
+        return 0;
+
+    return in / un;
+}
+
+
+void YoloV4::bubbleSort(std::vector<float> confs, int length, std::vector<int> &indDiff)
+{
+    for (int m = 0; m < length; m++)
+    {
+        indDiff[m] = m;
+    }
+    for (int i = 0; i < length; i++)
+    {
+        for (int j = 0; j < length - i - 1; j++)
+        {
+            if (confs[j] < confs[j + 1])
+            {
+                float temp = confs[j];
+                confs[j] = confs[j + 1];
+                confs[j + 1] = temp;
+                int ind_temp = indDiff[j];
+                indDiff[j] = indDiff[j + 1];
+                indDiff[j + 1] = ind_temp;
+            }
+        }
+    }
+}
+
+std::vector<std::vector<int>> YoloV4::allClassNMS(std::vector<std::vector<float>> &confFilterVec,
+                                                  std::vector<std::vector<int>> &confIdFilterVec,
+                                                  std::vector<std::vector<ObjPos>> &boxFilterVec,
+                                                  float nmsThreshold)
+{
+    int batch = boxFilterVec.size();
+    std::vector<std::vector<int>> keepVec;
+    for (int i = 0; i < batch; i ++)
+    {
+        std::vector<int> keep;
+        std::vector<float> confs = confFilterVec[i];
+        std::vector<int> ids = confIdFilterVec[i];
+        std::vector<ObjPos> boxes = boxFilterVec[i];
+        int targetNum = boxes.size();
+        std::vector<int> indDiff(targetNum, 0);
+        bubbleSort(confs, targetNum, indDiff);
+        while (!indDiff.empty())
+        {
+            int idxSelf = indDiff[0];
+            keep.push_back(idxSelf);
+            std::vector<float> iouVec;
+            for (int j = 1; j < indDiff.size(); j++)
+            {
+                float iou = getIOU(cv::Rect_<float>(boxes[idxSelf].x1, boxes[idxSelf].y1,
+                                            boxes[idxSelf].x2 - boxes[idxSelf].x1,
+                                            boxes[idxSelf].y2 - boxes[idxSelf].y1),
+                                   cv::Rect_<float>(boxes[indDiff[j]].x1, boxes[indDiff[j]].y1,
+                                            boxes[indDiff[j]].x2 - boxes[indDiff[j]].x1,
+                                            boxes[indDiff[j]].y2 - boxes[indDiff[j]].y1));
+                iouVec.push_back(iou);
+            }
+            std::vector<int> newIndex;
+            for (int j = 0; j < iouVec.size(); j++)
+            {
+                if (iouVec[j] < nmsThreshold)
+                {
+                    newIndex.push_back(indDiff[1 + j]);
+                }
+            }
+            indDiff = newIndex;
+        }
+        keepVec.push_back(keep);
+    }
+    return keepVec;
+}
+
 std::vector<detectResult> YoloV4::postProcessing(float *boxesProb, float *confProb, int batch)
 {
+    std::vector<std::vector<int>> keepVec;
     std::vector<std::vector<float>> maxConfVec;
     std::vector<std::vector<int>> maxConfIndexVec;
     std::vector<std::vector<float>> confFilterVec;
@@ -154,7 +237,11 @@ std::vector<detectResult> YoloV4::postProcessing(float *boxesProb, float *confPr
     std::vector<std::vector<ObjPos>> boxFilterVec;
     getMaxConfsData(confProb, batch, maxConfVec, maxConfIndexVec);
     thresholdFilter(boxesProb, maxConfVec, maxConfIndexVec, confFilterVec, confIdFilterVec, boxFilterVec, 0.4);
-    std::vector<detectResult> result = getDetResult(confFilterVec, confIdFilterVec, boxFilterVec);
+    if (mAllClasssNMS)
+    {
+        keepVec = allClassNMS(confFilterVec, confIdFilterVec, boxFilterVec, 0.6);
+    }
+    std::vector<detectResult> result = getDetResult(confFilterVec, confIdFilterVec, boxFilterVec, keepVec);
     return result;
 }
 
@@ -198,6 +285,7 @@ void YoloV4::readParameters(const std::string& configPath)
 {
     std::string yamlFile = configPath + "/" + "yolo.yaml";
     cv::FileStorage fs(yamlFile, cv::FileStorage::READ);
+    fs["allClassNMS"] >> mAllClasssNMS;
     mMaxSupportBatchSize = fs["maxSupportBatchSize"];
     mQuantizationInfer = (std::string) fs["quantizationInfer"];
     mOnnxFile = configPath + "/"  + (std::string) fs["onnxFile"];

@@ -1,5 +1,6 @@
 %YAML:1.0
 ---
+allClassNMS: true
 maxSupportBatchSize: 64
 quantizationInfer: "FP16"       #FP32 or FP16 quantization
 onnxFile: "yolov4_-1_3_832_832_dynamic.onnx"
