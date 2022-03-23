@@ -1,5 +1,7 @@
 %YAML:1.0
 ---
+confTreshold: 0.3
+nmsTreshold: 0.6
 allClassNMS: true
 maxSupportBatchSize: 64
 quantizationInfer: "FP16"       #FP32 or FP16 quantization

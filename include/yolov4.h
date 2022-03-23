@@ -117,6 +117,8 @@ private:
     int mOutputConfsSize;
     unsigned char *mInputData;
     float *mBuff[3];
+    float mConfTreshold;
+    float mNMSTreshold;
     nvinfer1::IRuntime *mRuntime;
     nvinfer1::ICudaEngine *mEngine;
     nvinfer1::IExecutionContext *mContext;

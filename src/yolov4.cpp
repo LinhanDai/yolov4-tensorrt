@@ -236,10 +236,10 @@ std::vector<detectResult> YoloV4::postProcessing(float *boxesProb, float *confPr
     std::vector<std::vector<int>> confIdFilterVec;
     std::vector<std::vector<ObjPos>> boxFilterVec;
     getMaxConfsData(confProb, batch, maxConfVec, maxConfIndexVec);
-    thresholdFilter(boxesProb, maxConfVec, maxConfIndexVec, confFilterVec, confIdFilterVec, boxFilterVec, 0.4);
+    thresholdFilter(boxesProb, maxConfVec, maxConfIndexVec, confFilterVec, confIdFilterVec, boxFilterVec, mConfTreshold);
     if (mAllClasssNMS)
     {
-        keepVec = allClassNMS(confFilterVec, confIdFilterVec, boxFilterVec, 0.6);
+        keepVec = allClassNMS(confFilterVec, confIdFilterVec, boxFilterVec, mNMSTreshold);
     }
     std::vector<detectResult> result = getDetResult(confFilterVec, confIdFilterVec, boxFilterVec, keepVec);
     return result;
@@ -285,6 +285,8 @@ void YoloV4::readParameters(const std::string& configPath)
 {
     std::string yamlFile = configPath + "/" + "yolo.yaml";
     cv::FileStorage fs(yamlFile, cv::FileStorage::READ);
+    mConfTreshold = fs["confTreshold"];
+    mNMSTreshold = fs["nmsTreshold"];
     fs["allClassNMS"] >> mAllClasssNMS;
     mMaxSupportBatchSize = fs["maxSupportBatchSize"];
     mQuantizationInfer = (std::string) fs["quantizationInfer"];
