@@ -70,6 +70,8 @@ public:
     std::vector<detectResult> detect(std::vector<cv::Mat> &batchImg);
 
 private:
+    void modifyBoundaryValue(int &x1, int &y1, int &x2, int &y2, int imgWidth, int imgHeight);
+    bool checkDetectRect(int &x1, int &y1, int &x2, int &y2, int imgWidth, int imgHeight);
     void bubbleSort(std::vector<float> confs, int length, std::vector<int> &indDiff);
     float getIOU(cv::Rect_<float> bb_test, cv::Rect_<float> bb_gt);
     void initInputImageSize(std::vector<cv::Mat> &batchImg);

@@ -120,6 +120,51 @@ void YoloV4::thresholdFilter(const float *boxesProb, std::vector<std::vector<flo
     }
 }
 
+void YoloV4::modifyBoundaryValue(int &x1, int &y1, int &x2, int &y2, int imgWidth, int imgHeight)
+{
+    if (x1 < 0)
+    {
+        x1 = 0;
+    }
+    else if (x1 > imgWidth)
+    {
+        x1 = imgWidth;
+    }
+    if (x2 < 0)
+    {
+        x2 = 0;
+    }
+    else if (x2 > imgWidth)
+    {
+        x2 = imgWidth;
+    }
+    if (y1 < 0)
+    {
+        y1 = 0;
+    }
+    else if (y1 > imgHeight)
+    {
+        y1 = imgHeight;
+    }
+    if (y2 < 0)
+    {
+        y2 = 0;
+    }
+    else if (y2 > imgHeight)
+    {
+        y2 = imgHeight;
+    }
+}
+
+bool YoloV4::checkDetectRect(int &x1, int &y1, int &x2, int &y2, int imgWidth, int imgHeight)
+{
+    modifyBoundaryValue(x1, y1, x2, y2, imgWidth, imgHeight);
+    if ((x2 - x1 > 0) && (y2 - y1 > 0))
+        return true;
+    else
+        return false;
+}
+
 std::vector<detectResult> YoloV4::getDetResult(std::vector<std::vector<float>> &confFilterVec,
                                        std::vector<std::vector<int>> &confIdFilterVec,
                                        std::vector<std::vector<ObjPos>> &boxFilterVec,
@@ -133,13 +178,20 @@ std::vector<detectResult> YoloV4::getDetResult(std::vector<std::vector<float>> &
         for (int j = 0; j < keepVec[i].size(); ++j)
         {
             ObjStu obj{};
-            obj.rect.x = boxFilterVec[i][keepVec[i][j]].x1 * mImageSizeBatch[i].width;
-            obj.rect.y = boxFilterVec[i][keepVec[i][j]].y1 * mImageSizeBatch[i].height;
-            obj.rect.width = (boxFilterVec[i][keepVec[i][j]].x2 - boxFilterVec[i][keepVec[i][j]].x1) * mImageSizeBatch[i].width;
-            obj.rect.height = (boxFilterVec[i][keepVec[i][j]].y2 - boxFilterVec[i][keepVec[i][j]].y1) * mImageSizeBatch[i].height;
-            obj.prob = confFilterVec[i][keepVec[i][j]];
-            obj.id = confIdFilterVec[i][keepVec[i][j]];
-            det.push_back(obj);
+            int x1 = boxFilterVec[i][keepVec[i][j]].x1 * mImageSizeBatch[i].width;
+            int y1 = boxFilterVec[i][keepVec[i][j]].y1 * mImageSizeBatch[i].height;
+            int x2 = boxFilterVec[i][keepVec[i][j]].x2 * mImageSizeBatch[i].width;
+            int y2 = boxFilterVec[i][keepVec[i][j]].y2 * mImageSizeBatch[i].height;
+            if(checkDetectRect(x1, y1, x2, y2, mImageSizeBatch[i].width, mImageSizeBatch[i].height))
+            {
+                obj.rect.x = boxFilterVec[i][keepVec[i][j]].x1 * mImageSizeBatch[i].width;
+                obj.rect.y = boxFilterVec[i][keepVec[i][j]].y1 * mImageSizeBatch[i].height;
+                obj.rect.width = (boxFilterVec[i][keepVec[i][j]].x2 - boxFilterVec[i][keepVec[i][j]].x1) * mImageSizeBatch[i].width;
+                obj.rect.height = (boxFilterVec[i][keepVec[i][j]].y2 - boxFilterVec[i][keepVec[i][j]].y1) * mImageSizeBatch[i].height;
+                obj.prob = confFilterVec[i][keepVec[i][j]];
+                obj.id = confIdFilterVec[i][keepVec[i][j]];
+                det.push_back(obj);
+            }
         }
         result.push_back(det);
     }
@@ -259,16 +311,20 @@ void YoloV4::initInputImageSize(std::vector<cv::Mat> &batchImg)
 
 std::vector<detectResult> YoloV4::detect(std::vector<cv::Mat> &batchImg)
 {
-    int batch = batchImg.size();
-    initInputImageSize(batchImg);
-    imgPreProcess(batchImg);
+    std::vector<cv::Mat> detectMatVec;
+    for (auto & img : batchImg)
+    {
+        detectMatVec.push_back(img);
+    }
+    int batch = detectMatVec.size();
+    initInputImageSize(detectMatVec);
+    imgPreProcess(detectMatVec);
     int inputSingleByteNum = mInputH * mInputW * mInputC;
     for (size_t i = 0; i < batch; i++)
     {
-        cudaMemcpyAsync(mInputData + i * inputSingleByteNum, batchImg[i].data, inputSingleByteNum,
+        cudaMemcpyAsync(mInputData + i * inputSingleByteNum, detectMatVec[i].data, inputSingleByteNum,
                         cudaMemcpyHostToDevice, mStream);
     }
-
     cudaPreProcess(mBuff[0], mInputData, mInputW, mInputH, mInputC, batch, mStream);
     float *boxesProb = (float *) malloc(batch * mOutputBoxesSize * sizeof(float));
     float *confProb = (float *) malloc(batch * mOutputConfsSize * sizeof(float));
@@ -278,6 +334,7 @@ std::vector<detectResult> YoloV4::detect(std::vector<cv::Mat> &batchImg)
     std::vector<detectResult> detectResult = postProcessing(boxesProb, confProb, batch);
     free(boxesProb);
     free(confProb);
+    mImageSizeBatch.clear();
     return detectResult;
 }
 

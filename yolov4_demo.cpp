@@ -26,7 +26,7 @@ void showResult(const std::vector<detectResult>& result, std::vector<cv::Mat> &i
         cv::namedWindow("Windows", cv::WINDOW_NORMAL);
         cv::resizeWindow("Windows", imgCloneBatch[i].cols / 2, imgCloneBatch[i].rows / 2);
         cv::imshow("Windows", imgCloneBatch[i]);
-        cv::waitKey(1);
+        cv::waitKey(0);
     }
 }
 
@@ -39,20 +39,15 @@ int main()
     std::shared_ptr<YoloV4> yoloObj = std::make_shared<YoloV4>(configPath);
     for (auto image: images)
     {
-        std::vector<cv::Mat> imgCloneBatch;
         std::vector<cv::Mat> batch_img;
         cv::Mat img = cv::imread(image, cv::IMREAD_COLOR);
         batch_img.push_back(img);
-        for (int i = 0; i < batch_img.size(); i++)
-        {
-            imgCloneBatch.push_back(batch_img[i].clone());
-        }
         double start = cv::getTickCount();
         std::vector<detectResult> result = yoloObj->detect(batch_img);
         double end = cv::getTickCount();
         double fps =  1 / ((end - start) / cv::getTickFrequency());
         std::cout << "fps:" << fps << std::endl;
-        showResult(result, imgCloneBatch);
+        showResult(result, batch_img);
     }
     return 0;
 }
